@@ -150,9 +150,11 @@ async function initializeMatchDetails() {
 
         async function initStadiumMap(stadiumId, selectedMatchLocal) {
             try {
+
                 // 🟢 SỬA: Gọi hàm local getStadiumSections (không cần token)
                 const sections = await getStadiumSections(stadiumId);
                 
+
                 // build lookup for section_price for current match
                 const sectionPriceMap = {};
                 (selectedMatchLocal.section_prices || []).forEach(sp => {
@@ -689,11 +691,30 @@ async function initializeMatchDetails() {
                             localStorage.setItem('orderID', orderId);
                             window.location.href = momoResponse.payUrl;
                         } else {
-                            showCusToast('Lỗi khi tạo liên kết thanh toán MoMo.', 'danger');
+                            const momoErr = momoResponse.error || momoResponse.message || 'Lỗi khi tạo liên kết thanh toán MoMo.';
+                            showCusToast(momoErr, 'danger');
+
+                            // Nếu backend trả payment_id (do gateway timeout), lưu lại để người dùng có thể thử lại
+                            if (momoResponse.payment_id) {
+                                localStorage.setItem('last_momo_payment_id', momoResponse.payment_id);
+                                showCusToast(`Giao dịch đang chờ. Thử lại thanh toán (Mã: ${momoResponse.payment_id}).`, 'info');
+                            }
+
+                            console.error('MoMo payment error:', momoResponse);
                         }
                     } else {
                         let errorMsg = response.message || 'Lỗi khi đặt hàng.';
-                        if(response.errors) errorMsg = JSON.stringify(response.errors);
+                        if (response.errors) {
+                            if (typeof response.errors === 'string') {
+                                errorMsg = response.errors;
+                            } else if (response.errors.message) {
+                                errorMsg = response.errors.message;
+                            } else if (response.errors.non_field_errors) {
+                                errorMsg = Array.isArray(response.errors.non_field_errors) ? response.errors.non_field_errors[0] : JSON.stringify(response.errors.non_field_errors);
+                            } else {
+                                errorMsg = JSON.stringify(response.errors);
+                            }
+                        }
                         showCusToast(errorMsg, 'danger');
                     }
                 } catch (error) {

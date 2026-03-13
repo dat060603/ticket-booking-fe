@@ -2,24 +2,31 @@ import CONFIG from "/js/utils/settings.js";
 const BASE_URL = CONFIG.BASE_URL;
 
 export function getToken() {
-  return localStorage.getItem('access');
+  // Hỗ trợ cả 2 key 'access' và 'access_token'
+  return localStorage.getItem('access') || localStorage.getItem('access_token');
 }
 
 export function fetchWithToken(url, options = {}) {
-    // Lấy access token từ localStorage
-    const accessToken = localStorage.getItem('access');
+    // Lấy access token từ localStorage (hỗ trợ cả 'access' và 'access_token')
+    const accessToken = getToken();
 
     options.headers = options.headers || {};
-    options.headers['Authorization'] = `Bearer ${accessToken}`;
+    if (accessToken) {
+        options.headers['Authorization'] = `Bearer ${accessToken}`;
+    }
 
     return fetch(url, options)
         .then(response => {
             if (response.status === 401) {
                 return refreshAccessToken().then(newAccessToken => {
-                    options.headers['Authorization'] = `Bearer ${newAccessToken}`;
-                    return fetch(url, options);
+                    if (newAccessToken) {
+                        options.headers['Authorization'] = `Bearer ${newAccessToken}`;
+                        return fetch(url, options);
+                    }
+                    return Promise.reject('Failed to refresh token');
                 });
             }
+            console.log('Response Status:', response);
             return response;
         });
 }
@@ -30,7 +37,7 @@ function refreshAccessToken() {
     
     if (!refreshToken) {
         // Nếu không có refresh token, yêu cầu người dùng đăng nhập lại
-        window.location.href = '/pages/login_empl.html';
+        window.location.href = '/pages/login_empl1.html';
         return Promise.reject('No refresh token available');
     }
 
@@ -44,16 +51,19 @@ function refreshAccessToken() {
     })
     .then(response => response.json())
     .then(data => {
-        if (data.access) {
-            // Lưu access token mới vào localStorage
-            const newAccessToken = data.access;
+        // Hỗ trợ response trả về 'access' hoặc 'access_token'
+        const newAccessToken = data.access || data.access_token;
+        if (newAccessToken) {
+            // Lưu access token mới vào cả 2 key để tương thích
             localStorage.setItem('access', newAccessToken);
+            localStorage.setItem('access_token', newAccessToken);
             return newAccessToken;
         } else {
             // Nếu làm mới token thất bại, yêu cầu người dùng đăng nhập lại
             localStorage.removeItem('access');
+            localStorage.removeItem('access_token');
             localStorage.removeItem('refresh');
-            window.location.href = '/pages/login_empl.html';
+            window.location.href = '/pages/login_empl1.html';
             return Promise.reject('Failed to refresh token');
         }
     })
@@ -61,8 +71,9 @@ function refreshAccessToken() {
         console.error('Error refreshing token:', error);
         // Nếu có lỗi trong quá trình làm mới token, yêu cầu người dùng đăng nhập lại
         localStorage.removeItem('access');
+        localStorage.removeItem('access_token');
         localStorage.removeItem('refresh');
-        window.location.href = '/pages/login_empl.html';
+        window.location.href = '/pages/login_empl1.html';
         return Promise.reject('Error refreshing token');
     });
 }

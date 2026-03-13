@@ -1,13 +1,36 @@
 import CONFIG from "../../utils/settings.js";
 import { showCusToast } from "../../components/toast.js";
-import { getStadiumSections } from '/js/services/admin/stadiumService.js';
 
-
-
+// 🔴 XÓA HOẶC COMMENT DÒNG NÀY ĐỂ TRÁNH BỊ CHUYỂN HƯỚNG SANG LOGIN ADMIN
+// import { getStadiumSections } from "../admin/stadiumService.js";
 
 const { BASE_URL, TUNNEL_URL } = CONFIG;
 const MAX_TICKETS_PER_SECTION = 5;
 const MAX_TOTAL_AMOUNT = 50000000; // 50,000,000 VND
+
+// --- 🟢 HÀM MỚI: Lấy sơ đồ sân (Public - Không cần Token) ---
+// Hàm này thay thế cho hàm import từ admin, giúp khách vãng lai cũng xem được map
+async function getStadiumSections(stadiumId) {
+    try {
+        // Gọi API trực tiếp bằng fetch thường
+        const response = await fetch(`${BASE_URL}/api/events/stadiums/${stadiumId}/sections/`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+                // QUAN TRỌNG: Không gửi Authorization header ở đây
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`Lỗi tải sơ đồ sân: ${response.status}`);
+            return [];
+        }
+        return await response.json();
+    } catch (error) {
+        console.error("Lỗi fetch getStadiumSections:", error);
+        return [];
+    }
+}
 
 // Utility to sanitize quantity input
 function sanitizeQuantity(value, max) {
@@ -63,15 +86,15 @@ async function fetchPromotions(matchId, sectionId, promoSelect) {
 }
 
 // Main function to initialize the page
-// Main function to initialize the page
 async function initializeMatchDetails() {
-    // --- GIỮ NGUYÊN PHẦN KHỞI TẠO ĐIỂM ---
+    // --- KHỞI TẠO ĐIỂM ---
     const pointsSection = document.getElementById('points-section');
     const availablePointsElem = document.getElementById('available-points');
     const usePointsInput = document.getElementById('use-points-input');
     const pointsDiscountElem = document.getElementById('points-discount-amount');
     
     let userPoints = 0;
+    // Chỉ lấy điểm nếu CÓ token (đã đăng nhập)
     if (localStorage.getItem('access_token')) {
         userPoints = await fetchCustomerPoints();
         if (pointsSection) {
@@ -95,7 +118,7 @@ async function initializeMatchDetails() {
             throw new Error('Dữ liệu trận đấu không hợp lệ');
         }
 
-        // --- GIỮ NGUYÊN PHẦN HIỂN THỊ INFO TRẬN ĐẤU ---
+        // --- UPDATE GIAO DIỆN INFO ---
         document.getElementById('team1-logo').src = selectedMatch.team_1.logo || 'https://via.placeholder.com/50';
         document.getElementById('team2-logo').src = selectedMatch.team_2.logo || 'https://via.placeholder.com/50';
         document.getElementById('match-title').textContent = `${selectedMatch.team_1.team_name} vs ${selectedMatch.team_2.team_name}`;
@@ -105,22 +128,19 @@ async function initializeMatchDetails() {
         document.getElementById('stadium').textContent = selectedMatch.stadium.stadium_name;
         document.getElementById('description').textContent = selectedMatch.description;
 
-
         const layoutImage = document.getElementById('stadium-layout-image');
 
-        // --- BẮT ĐẦU XỬ LÝ VÉ (LOGIC ĐƯỢC SỬA Ở ĐÂY) ---
+        // --- XỬ LÝ VÉ ---
         const ticketContainer = document.getElementById('ticket-container');
         const totalOrderCostElement = document.getElementById('total-order-cost');
         const selectedTickets = [];
 
-
-        // ---- Interactive stadium map (syncs with ticket column) ----
+        // ---- Interactive stadium map ----
         const stadiumMapContainer = document.getElementById('stadium-map-container');
-        const shapesBySectionId = {}; // section_id -> { group, rect, text, closed }
+        const shapesBySectionId = {}; 
         let konvaStage = null, konvaLayer = null;
 
         if (selectedMatch.stadium.stadium_layouts) {
-            // hide static image (we will initialize map after tickets are rendered)
             const layoutImageEl = document.getElementById('stadium-layout-image');
             if (layoutImageEl) layoutImageEl.style.display = 'none';
             if (stadiumMapContainer) stadiumMapContainer.style.display = 'block';
@@ -130,15 +150,15 @@ async function initializeMatchDetails() {
 
         async function initStadiumMap(stadiumId, selectedMatchLocal) {
             try {
-                const token = localStorage.getItem('access_token') || '';
-                const sections = await getStadiumSections(stadiumId, token);
+                // 🟢 SỬA: Gọi hàm local getStadiumSections (không cần token)
+                const sections = await getStadiumSections(stadiumId);
+                
                 // build lookup for section_price for current match
                 const sectionPriceMap = {};
                 (selectedMatchLocal.section_prices || []).forEach(sp => {
                     sectionPriceMap[sp.section.section_id] = sp;
                 });
 
-                // prepare stadium areas from sections (similar to admin page)
                 const areas = sections.map(section => {
                     if (section.map_position) {
                         try {
@@ -155,7 +175,6 @@ async function initializeMatchDetails() {
                     }
                 });
 
-                // destroy any previous stage
                 if (konvaStage) konvaStage.destroy();
                 const containerWidth = stadiumMapContainer.clientWidth || 600;
                 const containerHeight = 400;
@@ -167,8 +186,7 @@ async function initializeMatchDetails() {
                 konvaLayer = new Konva.Layer();
                 konvaStage.add(konvaLayer);
 
-                // Draw background / pitch and compute uniform scaling so admin coordinates align and are centered
-                const sourceWidth = 1000; // admin editor reference
+                const sourceWidth = 1000; 
                 const sourceHeight = 700;
                 const uniformScale = Math.min(containerWidth / sourceWidth, containerHeight / sourceHeight);
                 const scaledStageWidth = Math.round(sourceWidth * uniformScale);
@@ -176,15 +194,12 @@ async function initializeMatchDetails() {
                 const offsetX = Math.round((containerWidth - scaledStageWidth) / 2);
                 const offsetY = Math.round((containerHeight - scaledStageHeight) / 2);
 
-                // subtle stadium background (full container) and stage area border to reflect admin editor
                 const bg = new Konva.Rect({ x: 0, y: 0, width: containerWidth, height: containerHeight, fill: '#f6fff6', listening: false });
                 konvaLayer.add(bg);
 
-                // stage area (scaled admin stage) - gives precise coordinate mapping
                 const stageArea = new Konva.Rect({ x: offsetX, y: offsetY, width: scaledStageWidth, height: scaledStageHeight, fill: '#ecf6ee', stroke: '#2c3e50', strokeWidth: 2, cornerRadius: 8, listening: false });
                 konvaLayer.add(stageArea);
 
-                // draw pitch exactly where admin placed it: admin pitch is at (300,200) size (400x300)
                 const adminPitch = { x: 300, y: 200, width: 400, height: 300 };
                 const pitchRect = new Konva.Rect({
                     x: offsetX + Math.round(adminPitch.x * uniformScale),
@@ -198,7 +213,6 @@ async function initializeMatchDetails() {
                 });
                 konvaLayer.add(pitchRect);
 
-                // Draw areas, applying uniform scaling and clamping so shapes match admin placement
                 areas.forEach(a => {
                     const sp = sectionPriceMap[a.section_id];
                     const closed = (!sp || sp.is_closed || sp.available_seats <= 0);
@@ -209,7 +223,6 @@ async function initializeMatchDetails() {
                     const widthScaled = Math.max(8, Math.round((a.width || 40) * uniformScale));
                     const heightScaled = Math.max(8, Math.round((a.height || 40) * uniformScale));
 
-                    // clamp to the stage area (not entire container)
                     const xClamped = Math.min(Math.max(xScaled, offsetX), offsetX + scaledStageWidth - widthScaled);
                     const yClamped = Math.min(Math.max(yScaled, offsetY), offsetY + scaledStageHeight - heightScaled);
 
@@ -241,7 +254,6 @@ async function initializeMatchDetails() {
                         fontSize: fontSize
                     });
 
-                    // center text
                     text.position({ x: widthScaled / 2, y: heightScaled / 2 });
                     text.offsetX(text.width() / 2);
                     text.offsetY(text.height() / 2);
@@ -258,7 +270,6 @@ async function initializeMatchDetails() {
                             showCusToast('Khu vực không thể mua', 'info');
                             return;
                         }
-                        // open quantity modal
                         const spLocal = sectionPriceMap[a.section_id];
                         const maxQuantity = Math.min(spLocal.available_seats, MAX_TICKETS_PER_SECTION);
                         const current = (selectedTickets.find(t => t.section === a.section_id) || {}).quantity || 0;
@@ -314,18 +325,21 @@ async function initializeMatchDetails() {
                     quantitySelect.value = String(Math.min(quantity, maxQuantity));
                     quantityDiv.style.display = 'inline-block';
                     if (buyButton) buyButton.style.display = 'none';
-                }                // fetch promotions for this section when selection is made via map
+                }                
                 const promoSelectEl = document.getElementById(`promo-code-${sectionId}`);
                 if (promoSelectEl) {
                     fetchPromotions(selectedMatchId, sectionId, promoSelectEl);
-                }                if (ticketIndex === -1) {
+                }                
+                if (ticketIndex === -1) {
                     selectedTickets.push({ section: sectionId, quantity: Math.min(quantity, maxQuantity) });
                 } else {
                     selectedTickets[ticketIndex].quantity = Math.min(quantity, maxQuantity);
                 }
                 if (totalPriceElement && sp) {
                     const ticketObj = sp;
-                    totalPriceElement.textContent = calculateTotalPrice(ticketObj, Math.min(quantity, maxQuantity)).toFixed(2);
+                    // SỬA THÀNH: toLocaleString('vi-VN') để ra định dạng 804.000 (không có đuôi thập phân .00)
+                    const total = calculateTotalPrice(ticketObj, Math.min(quantity, maxQuantity));
+                    totalPriceElement.textContent = total.toLocaleString('vi-VN');
                 }
             } else {
                 if (quantitySelect) {
@@ -337,7 +351,6 @@ async function initializeMatchDetails() {
                 if (totalPriceElement) totalPriceElement.textContent = '0.00';
             }
 
-            // Update totals and highlight on map
             updateTotalOrderCost();
             updateMapHighlight(sectionId, quantity);
         }
@@ -367,108 +380,90 @@ async function initializeMatchDetails() {
 
         // Update total order cost
         function updateTotalOrderCost() {
-    let totalTicketCost = 0;
-    
-    // 1. Cộng dồn tiền vé (đã trừ khuyến mãi Promotion)
-    selectedTickets.forEach(ticket => {
-        const totalPriceElement = document.getElementById(`total-price-${ticket.section}`);
-        // Parse số từ text (loại bỏ dấu chấm phân cách hàng nghìn)
-        const priceValue = totalPriceElement ? parseFloat(totalPriceElement.textContent.replace(/\./g, '').replace(/,/g, '')) : 0;
-        totalTicketCost += priceValue;
-    });
+            let totalTicketCost = 0;
+            
+            // 1. Cộng dồn tiền vé (đã trừ khuyến mãi Promotion)
+            selectedTickets.forEach(ticket => {
+                const totalPriceElement = document.getElementById(`total-price-${ticket.section}`);
+                // Parse số từ text (loại bỏ dấu chấm phân cách hàng nghìn)
+                const priceValue = totalPriceElement ? parseFloat(totalPriceElement.textContent.replace(/\./g, '').replace(/,/g, '')) : 0;
+                totalTicketCost += priceValue;
+            });
 
-    // 2. LOGIC MỚI: TÍNH GIỚI HẠN ĐIỂM
-    let pointsToUse = 0;
-    
-    if (usePointsInput) {
-        // Lấy giá trị khách nhập
-        let rawInput = parseInt(usePointsInput.value) || 0;
-        
-        // a. Giới hạn bởi số điểm khách đang có
-        const maxUserPoints = parseInt(usePointsInput.max) || 0;
-        
-        // b. Giới hạn bởi giá trị đơn hàng (Logic trần điểm)
-        // Ví dụ: Đơn 900k -> Cần tối đa 900 điểm. 
-        // Đơn 0đ (do Promotion 100%) -> Cần 0 điểm.
-        const maxPointsNeeded = Math.ceil(totalTicketCost / 1000);
+            // 2. LOGIC MỚI: TÍNH GIỚI HẠN ĐIỂM
+            let pointsToUse = 0;
+            
+            if (usePointsInput) {
+                // Lấy giá trị khách nhập
+                let rawInput = parseInt(usePointsInput.value) || 0;
+                
+                // a. Giới hạn bởi số điểm khách đang có
+                const maxUserPoints = parseInt(usePointsInput.max) || 0;
+                
+                // b. Giới hạn bởi giá trị đơn hàng (Logic trần điểm)
+                // Ví dụ: Đơn 900k -> Cần tối đa 900 điểm. 
+                // Đơn 0đ (do Promotion 100%) -> Cần 0 điểm.
+                const maxPointsNeeded = Math.ceil(totalTicketCost / 1000);
 
-        // Số điểm thực tế tối đa có thể dùng cho đơn này
-        // Là số nhỏ nhất giữa: (Điểm khách có) và (Điểm cần thiết để trả đơn này)
-        const realLimit = Math.min(maxUserPoints, maxPointsNeeded);
+                // Số điểm thực tế tối đa có thể dùng cho đơn này
+                const realLimit = Math.min(maxUserPoints, maxPointsNeeded);
 
-        // XỬ LÝ GIAO DIỆN:
-        if (rawInput > realLimit) {
-            // Nếu khách nhập lố, tự động đưa về mức trần
-            pointsToUse = realLimit;
-            usePointsInput.value = realLimit; // Cập nhật lại số trên ô input
+                // XỬ LÝ GIAO DIỆN:
+                if (rawInput > realLimit) {
+                    pointsToUse = realLimit;
+                    usePointsInput.value = realLimit; 
 
-            // Thông báo cho khách hiểu tại sao số lại nhảy
-            if (rawInput > maxUserPoints) {
-                showCusToast(`Bạn chỉ có tối đa ${maxUserPoints} điểm.`, 'warning');
-            } else if (rawInput > maxPointsNeeded) {
-                // Đây là cái bạn cần: Thông báo đơn hàng này chỉ cần nhiêu đó điểm
-                showCusToast(`Đơn hàng này chỉ cần tối đa ${maxPointsNeeded} điểm để thanh toán 0đ.`, 'info');
+                    if (rawInput > maxUserPoints) {
+                        showCusToast(`Bạn chỉ có tối đa ${maxUserPoints} điểm.`, 'warning');
+                    } else if (rawInput > maxPointsNeeded) {
+                        showCusToast(`Đơn hàng này chỉ cần tối đa ${maxPointsNeeded} điểm để thanh toán 0đ.`, 'info');
+                    }
+                } else {
+                    pointsToUse = rawInput;
+                }
             }
-        } else {
-            pointsToUse = rawInput;
-        }
-    }
-    
-    // 3. Tính toán tiền giảm
-    const discountFromPoints = pointsToUse * 1000;
-    const finalAmount = Math.max(0, totalTicketCost - discountFromPoints);
-
-    // 4. Update hiển thị
-    if (pointsDiscountElem) {
-        pointsDiscountElem.textContent = discountFromPoints.toLocaleString('vi-VN');
-    }
-    
-    if (totalOrderCostElement) {
-        totalOrderCostElement.textContent = finalAmount.toLocaleString('vi-VN');
-    }
-    const earningContainer = document.getElementById('earning-points-display');
-    const earningValue = document.getElementById('earning-points-value');
-
-    if (earningValue) {
-            // 1. Lấy hạng từ Storage
-            const userTier = localStorage.getItem('customer_tier') || 'bronze';
             
-            // --- THÊM DÒNG NÀY ĐỂ DEBUG (Xem F12 Console) ---
-            console.log("🔍 Debug Hạng thành viên:", userTier); 
-            // ------------------------------------------------
+            // 3. Tính toán tiền giảm
+            const discountFromPoints = pointsToUse * 1000;
+            const finalAmount = Math.max(0, totalTicketCost - discountFromPoints);
 
-            // 2. Xác định hệ số nhân
-            let multiplier = 1.0;
-            if (userTier === 'silver') multiplier = 1.1;
-            if (userTier === 'gold') multiplier = 1.2;
-            if (userTier === 'diamond') multiplier = 1.5;
-
-            console.log("✖️ Hệ số nhân:", multiplier); // Kiểm tra xem hệ số có nhảy không
-
-            // 3. Tính điểm
-            const basePoints = Math.floor(finalAmount / 10000);
-            const pointsEarned = Math.floor(basePoints * multiplier);
-
-        // 4. Hiển thị
-        if (pointsEarned > 0) {
-            earningContainer.style.display = 'inline-block';
-            earningValue.textContent = pointsEarned.toLocaleString('vi-VN');
+            // 4. Update hiển thị
+            if (pointsDiscountElem) {
+                pointsDiscountElem.textContent = discountFromPoints.toLocaleString('vi-VN');
+            }
             
-            // Tooltip để giải thích tại sao được điểm này
-            earningContainer.title = `Hạng ${userTier.toUpperCase()}: Nhân ${multiplier} lần điểm thưởng`;
-        } else {
-            earningContainer.style.display = 'none';
+            if (totalOrderCostElement) {
+                totalOrderCostElement.textContent = finalAmount.toLocaleString('vi-VN');
+            }
+            const earningContainer = document.getElementById('earning-points-display');
+            const earningValue = document.getElementById('earning-points-value');
+
+            if (earningValue) {
+                    const userTier = localStorage.getItem('customer_tier') || 'bronze';
+                    
+                    let multiplier = 1.0;
+                    if (userTier === 'silver') multiplier = 1.1;
+                    if (userTier === 'gold') multiplier = 1.2;
+                    if (userTier === 'diamond') multiplier = 1.5;
+
+                    const basePoints = Math.floor(finalAmount / 10000);
+                    const pointsEarned = Math.floor(basePoints * multiplier);
+
+                if (pointsEarned > 0) {
+                    earningContainer.style.display = 'inline-block';
+                    earningValue.textContent = pointsEarned.toLocaleString('vi-VN');
+                    earningContainer.title = `Hạng ${userTier.toUpperCase()}: Nhân ${multiplier} lần điểm thưởng`;
+                } else {
+                    earningContainer.style.display = 'none';
+                }
+            }
+            // -------------------------------------------------
+
+            if (pointsDiscountElem) pointsDiscountElem.textContent = discountFromPoints.toLocaleString('vi-VN');
+            if (totalOrderCostElement) totalOrderCostElement.textContent = finalAmount.toLocaleString('vi-VN');
+            return finalAmount;
         }
-    }
-    // -------------------------------------------------
 
-    // Update hiển thị giá tiền (Code cũ)
-    if (pointsDiscountElem) pointsDiscountElem.textContent = discountFromPoints.toLocaleString('vi-VN');
-    if (totalOrderCostElement) totalOrderCostElement.textContent = finalAmount.toLocaleString('vi-VN');
-    return finalAmount;
-}
-
-        // Lắng nghe sự kiện nhập điểm
         if(usePointsInput){
             usePointsInput.addEventListener('input', updateTotalOrderCost);
         }
@@ -485,7 +480,6 @@ async function initializeMatchDetails() {
 
                 const ticketDiv = document.createElement('div');
                 ticketDiv.classList.add('ticket-card');
-                // GIỮ NGUYÊN HTML CỦA BẠN
                 ticketDiv.innerHTML = `
                     <p><strong>Khu vực:</strong> ${ticket.section.section_name}</p>
                     <p><strong>Giá:</strong> ${parseFloat(ticket.price).toLocaleString('vi-VN')}VND</p>
@@ -507,7 +501,6 @@ async function initializeMatchDetails() {
                 `;
                 ticketContainer.appendChild(ticketDiv);
 
-                // Get DOM elements
                 const sectionId = ticket.section.section_id;
                 const buyButton = document.getElementById(`buy-btn-${sectionId}`);
                 const quantityDiv = document.getElementById(`quantity-div-${sectionId}`);
@@ -522,7 +515,6 @@ async function initializeMatchDetails() {
                     const quantity = parseInt(quantitySelect.value, 10) || 0;
                     const unitPrice = parseFloat(ticket.price);
                     
-                    // Tính giá giảm trên mỗi vé
                     let discountPerUnit = 0;
                     const selectedOption = promoSelect.options[promoSelect.selectedIndex];
                     
@@ -537,20 +529,13 @@ async function initializeMatchDetails() {
                         }
                     }
 
-                    // Giá vé sau giảm (không âm)
                     const finalUnitPrice = Math.max(0, unitPrice - discountPerUnit);
-                    
-                    // Tổng tiền Section = Giá vé sau giảm * Số lượng
                     const sectionTotal = finalUnitPrice * quantity;
 
-                    // Cập nhật giao diện Section
-                    sectionTotalPriceElem.textContent = sectionTotal.toLocaleString('vi-VN'); // Hiển thị số đẹp
-                    
-                    // Cập nhật tổng đơn hàng
+                    sectionTotalPriceElem.textContent = sectionTotal.toLocaleString('vi-VN'); 
                     updateTotalOrderCost();
                 }
 
-                // Handle buy button click
                 buyButton.addEventListener('click', () => {
                     const accessToken = localStorage.getItem('access_token');
                     if (!accessToken) {
@@ -565,11 +550,9 @@ async function initializeMatchDetails() {
                     fetchPromotions(selectedMatchId, sectionId, promoSelect);
                 });
 
-                // Handle quantity selection
                 quantitySelect.addEventListener('change', () => {
                     let quantity = sanitizeQuantity(quantitySelect.value, maxQuantity);
 
-                    // Update selected tickets array
                     const ticketInArray = selectedTickets.find(t => t.section === sectionId);
                     if (quantity > 0) {
                         if (ticketInArray) ticketInArray.quantity = quantity;
@@ -578,36 +561,31 @@ async function initializeMatchDetails() {
                         selectedTickets.splice(selectedTickets.indexOf(ticketInArray), 1);
                     }
 
-                    // TÍNH TOÁN LẠI TIỀN
                     calculateSectionTotal();
                     
-                    // Check max amount
                     const totalCost = updateTotalOrderCost();
                     if (totalCost > MAX_TOTAL_AMOUNT) {
                         quantitySelect.value = '0';
                         if (ticketInArray) selectedTickets.splice(selectedTickets.indexOf(ticketInArray), 1);
-                        calculateSectionTotal(); // Reset về 0
+                        calculateSectionTotal(); 
                         showCusToast(`Tổng số tiền không được vượt quá ${MAX_TOTAL_AMOUNT.toLocaleString()} VND.`, 'danger');
                     }
 
-                    // Sync map highlight
                     if (typeof updateMapHighlight === 'function') {
                         updateMapHighlight(ticket.section.section_id, quantity);
                     }
                 });
 
-                // Handle promo selection (MỚI: Thêm sự kiện này để cập nhật giá khi chọn mã)
                 promoSelect.addEventListener('change', () => {
                     calculateSectionTotal();
                 });
 
-                // Handle cancel button
                 cancelButton.addEventListener('click', () => {
                     quantityDiv.style.display = 'none';
                     buyButton.style.display = 'inline-block';
                     quantitySelect.value = '0';
-                    promoSelect.value = ''; // Reset promo
-                    sectionTotalPriceElem.textContent = '0'; // Reset giá hiển thị
+                    promoSelect.value = ''; 
+                    sectionTotalPriceElem.textContent = '0'; 
 
                     const ticketIndex = selectedTickets.findIndex(t => t.section === sectionId);
                     if (ticketIndex !== -1) {
@@ -618,25 +596,34 @@ async function initializeMatchDetails() {
                     promoMessageDiv.innerHTML = '';
                     updateTotalOrderCost();
 
-                    // Sync map highlight off
                     if (typeof updateMapHighlight === 'function') {
                         updateMapHighlight(ticket.section.section_id, 0);
                     }
                 });
             });
 
-            // Handle order submission
+            // --- XỬ LÝ NÚT ĐẶT HÀNG ---
             const orderButton = document.getElementById('order-button');
             orderButton.style.display = 'inline-block';
             
             orderButton.addEventListener('click', async () => {
+                //  1. THÊM CHECK ĐĂNG NHẬP Ở ĐÂY (QUAN TRỌNG)
+                const accessToken = localStorage.getItem('access_token');
+                if (!accessToken) {
+                    showCusToast('Vui lòng đăng nhập để thanh toán.', 'warning'); // Hoặc 'info'
+                    setTimeout(() => { 
+                        window.location.href = '/pages/customer/login.html'; // Chuyển sang trang đăng nhập
+                    }, 1500);
+                    return; // Dừng lại ngay, không cho chạy tiếp code bên dưới
+                }
+
+                // 2. Kiểm tra có vé nào được chọn không (Code cũ)
                 const selectedTicketWithValidQuantity = selectedTickets.some(ticket => ticket.quantity > 0);
                 if (!selectedTicketWithValidQuantity) {
                     showCusToast('Vui lòng chọn ít nhất một vé để đặt hàng.', 'danger');
                     return;
                 }
 
-                // Lấy giá trị cuối cùng từ hàm tính toán chuẩn
                 const finalAmount = updateTotalOrderCost();
                 
                 if (finalAmount > MAX_TOTAL_AMOUNT) {
@@ -646,7 +633,7 @@ async function initializeMatchDetails() {
 
                 const orderData = {
                     user: localStorage.getItem('customer_id'),
-                    total_amount: finalAmount, // Đã trừ điểm
+                    total_amount: finalAmount, 
                     use_points: parseInt(document.getElementById('use-points-input')?.value) || 0,
                     order_status: 'pending',
                     order_method: 'online',
@@ -654,7 +641,6 @@ async function initializeMatchDetails() {
                 };
 
                 selectedTickets.forEach(ticket => {
-                     // Lấy Promo ID hiện tại trên giao diện
                     const pSelect = document.getElementById(`promo-code-${ticket.section}`);
                     const promoID = pSelect && pSelect.value ? parseInt(pSelect.value) : null;
 
@@ -662,14 +648,13 @@ async function initializeMatchDetails() {
                         orderData.order_details.push({
                             pricing: selectedMatch.section_prices.find(t => t.section.section_id === ticket.section).pricing_id,
                             price: selectedMatch.section_prices.find(t => t.section.section_id === ticket.section).price,
-                            promotion: promoID, // Gửi kèm promotion ID
+                            promotion: promoID, 
                             qr_code: null,
                             seat_id: null,
                         });
                     }
                 });
 
-                // ... (Phần gọi API giữ nguyên như cũ) ...
                 try {
                     const response = await fetch(`${BASE_URL}/api/orders/create-order/`, {
                         method: 'POST',
@@ -680,7 +665,7 @@ async function initializeMatchDetails() {
                     }).then(res => res.json());
 
                     if (response.status === 'success') {
-                        showCusToast('Đặt hàng thành công!', 'success');
+                        showCusToast('Đặt hàng thành công! Đang chuyển thanh toán...', 'success');
                         const totalAmount = Math.round(parseFloat(response.data.total_amount));
                         const orderId = response.data.order_id;
 
@@ -707,7 +692,6 @@ async function initializeMatchDetails() {
                             showCusToast('Lỗi khi tạo liên kết thanh toán MoMo.', 'danger');
                         }
                     } else {
-                        // Hiển thị lỗi chi tiết hơn nếu có
                         let errorMsg = response.message || 'Lỗi khi đặt hàng.';
                         if(response.errors) errorMsg = JSON.stringify(response.errors);
                         showCusToast(errorMsg, 'danger');
@@ -720,7 +704,6 @@ async function initializeMatchDetails() {
             ticketContainer.innerHTML = '<p>Không có vé nào khả dụng cho trận đấu này.</p>';
         }
 
-        // initialize interactive stadium map after ticket DOMs rendered
         if (selectedMatch.stadium.stadium_layouts) {
             if (stadiumMapContainer) stadiumMapContainer.style.display = 'block';
             initStadiumMap(selectedMatch.stadium.stadium_id, selectedMatch);
@@ -733,13 +716,8 @@ async function initializeMatchDetails() {
     }
 }
 
-//websocket
-// ... (Code cũ của bạn) ...
-
 // --- TÍCH HỢP WEBSOCKET ---
 function connectWebSocket(matchId) {
-    // 1. Tạo kết nối (Lưu ý: thay đổi ws:// hoặc wss:// tùy môi trường)
-    // Nếu bạn đang chạy local thì dùng ws://127.0.0.1:8000
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const socketUrl = `${protocol}//127.0.0.1:8000/ws/book/${matchId}/`; 
     
@@ -753,22 +731,16 @@ function connectWebSocket(matchId) {
         const data = JSON.parse(e.data);
         console.log("📩 WebSocket nhận tin:", data);
 
-        // Trường hợp 1: Nhận danh sách vé ban đầu (khi vừa vào trang)
         if (data.status === 'success' && data.tickets) {
             data.tickets.forEach(ticket => {
                 updateSeatCount(ticket.section_id, ticket.available_seats);
             });
         }
 
-        // Trường hợp 2: Cập nhật thời gian thực (khi có ai đó mua vé)
         if (data.status === 'update' && data.updated_sections) {
-            
-            // Hiển thị thông báo nhỏ (Toast)
             if (typeof showCusToast === 'function') {
                 showCusToast(`⚠️ ${data.message}`, 'info');
             }
-
-            // Cập nhật số lượng trên giao diện
             for (const [sectionId, newCount] of Object.entries(data.updated_sections)) {
                 updateSeatCount(sectionId, newCount);
             }
@@ -777,7 +749,6 @@ function connectWebSocket(matchId) {
 
     bookingSocket.onclose = function(e) {
         console.error('❌ WebSocket bị ngắt kết nối. Đang thử lại...');
-        // Tự động kết nối lại sau 3 giây (nếu muốn)
         setTimeout(() => connectWebSocket(matchId), 3000);
     };
     
@@ -786,22 +757,17 @@ function connectWebSocket(matchId) {
     };
 }
 
-// Hàm cập nhật giao diện
 function updateSeatCount(sectionId, count) {
     const seatElement = document.getElementById(`available-seats-${sectionId}`);
     if (seatElement) {
-        // Cập nhật số
         seatElement.textContent = count;
-        
-        // Hiệu ứng nhấp nháy màu đỏ để gây chú ý
         seatElement.style.color = "red";
         seatElement.style.fontWeight = "bold";
         setTimeout(() => {
-            seatElement.style.color = ""; // Trả về màu cũ
+            seatElement.style.color = ""; 
             seatElement.style.fontWeight = "";
         }, 2000);
 
-        // (Tùy chọn) Nếu hết vé (count <= 0), ẩn nút mua
         const buyBtn = document.getElementById(`buy-btn-${sectionId}`);
         if (count <= 0) {
             if (buyBtn) {
@@ -817,13 +783,12 @@ function updateSeatCount(sectionId, count) {
             }
         }
 
-        // Update map availability if map exists
         if (typeof window.updateStadiumMapAvailability === 'function') {
             window.updateStadiumMapAvailability(sectionId, count, count <= 0);
         }
     }
 }
-// tích điểm
+
 async function fetchCustomerPoints() {
     const customerId = localStorage.getItem('customer_id');
     if (!customerId) return 0;
@@ -833,21 +798,14 @@ async function fetchCustomerPoints() {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
-                // Nếu API profile yêu cầu token thì bỏ comment dòng dưới
-                // 'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             }
         });
 
         const data = await response.json();
         
         if (data.status === 'success' && data.data) {
-            console.log("✅ API trả về Tier:", data.data.tier); // Debug xem API trả về gì
-
-            // --- QUAN TRỌNG: LƯU TIER MỚI VÀO STORAGE ---
             const userTier = data.data.tier || 'bronze';
             localStorage.setItem('customer_tier', userTier); 
-            // ---------------------------------------------
-            
             return data.data.points || 0;
         }
         return 0;
@@ -856,5 +814,6 @@ async function fetchCustomerPoints() {
         return 0;
     }
 }
+
 // Initialize on page load
 window.onload = initializeMatchDetails;

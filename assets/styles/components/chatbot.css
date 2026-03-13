@@ -39,8 +39,8 @@
 
 .chatbot-header {
   background: linear-gradient(90deg,#312e81,#06b6d4);
-  color: #198754;
-  /* color: #fff; */
+  /* color: #198754; */
+  color: #fff;
   padding: 10px 12px;
   display: flex;
   align-items: center;
@@ -76,7 +76,7 @@
 
 .chatbot-message.user .bubble {
   background: #4f46e5;
-  color: #198754;
+  color: #fff;
   /* color: #fff; */
 
   border-radius: 14px 14px 4px 14px;

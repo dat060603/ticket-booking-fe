@@ -347,3 +347,88 @@ h2 {
     font-size: 1.4rem;
     font-weight: 800;
 }
+
+/* 1. Container tổng thể: Tạo cảm giác như một chiếc thẻ (Card) */
+.stadium-layout {
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); /* Đổ bóng mềm */
+    padding: 24px;
+    border: 1px solid #eef2f6;
+    transition: transform 0.3s ease;
+}
+
+/* 2. Tiêu đề: Font chữ đậm, rõ ràng, hiện đại */
+.stadium-layout h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1e293b; /* Màu than chì đậm */
+    margin-bottom: 20px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    position: relative;
+    display: inline-block;
+}
+
+/* Trang trí gạch dưới tiêu đề cho đẹp */
+.stadium-layout h2::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 4px;
+    background: linear-gradient(90deg, #2ecc71, #27ae60); /* Màu xanh sân cỏ */
+    margin: 8px auto 0;
+    border-radius: 2px;
+}
+
+/* 3. Khung bao quanh bản đồ: Tạo biên giới rõ ràng */
+.stadium-layout-container {
+    border-radius: 8px;
+    overflow: hidden; /* Cắt bỏ phần thừa nếu ảnh/map bị tràn */
+    border: 2px solid #e2e8f0;
+    background-color: #f8fafc; /* Màu nền nhẹ khi map chưa load */
+    position: relative;
+    transition: all 0.3s ease;
+}
+
+/* Hiệu ứng khi di chuột vào khung bản đồ */
+.stadium-layout-container:hover {
+    border-color: #2ecc71; /* Viền sáng lên màu xanh */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* 4. Tinh chỉnh vùng chứa Map (Konva container) */
+#stadium-map-container {
+    width: 100% !important; /* Đảm bảo full chiều rộng */
+    /* Chiều cao đã set inline là 400px, nhưng thêm min-height để an toàn trên mobile */
+    min-height: 300px;
+    cursor: grab; /* Con trỏ hình bàn tay để gợi ý có thể kéo/thả */
+    background: radial-gradient(circle, #ffffff 0%, #f1f5f9 100%); /* Nền gradient nhẹ */
+}
+
+#stadium-map-container:active {
+    cursor: grabbing; /* Con trỏ nắm chặt khi đang kéo */
+}
+
+/* 5. Ảnh tĩnh (Fallback image) */
+.stadium-image {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+    display: block;
+}
+
+/* --- RESPONSIVE MOBILE --- */
+@media (max-width: 768px) {
+    .stadium-layout {
+        padding: 16px; /* Giảm padding trên điện thoại */
+    }
+    
+    .stadium-layout h2 {
+        font-size: 1.25rem;
+    }
+
+    #stadium-map-container {
+        height: 300px !important; /* Giảm chiều cao trên điện thoại cho vừa màn hình */
+    }
+}

@@ -393,6 +393,8 @@ document.getElementById("end_time").addEventListener("input", function () {
 // AI PROMOTION
 // --- LOGIC TÍCH HỢP AI ---
 
+let aiChartInstance = null; // Biến toàn cục để lưu instance Chart.js
+
 const aiContainer = document.getElementById("ai-analysis-container");
 const aiElements = {
     tierBadge: document.getElementById("ai-tier-badge"),
@@ -454,12 +456,13 @@ function renderAiAnalysis(data) {
         aiElements.message.innerText = data.message;
         aiElements.message.className = "alert alert-success border-start border-5 border-success mb-3";
         aiElements.btnUse.disabled = true;
+        if(aiChartInstance) aiChartInstance.destroy();
         return;
     }
 
     const info = data.match_info;
     const rec = data.recommendation;
-
+    const analysisData = data.analysis_data; // Lấy mảng dữ liệu phân tích
     // Fill thông tin cơ bản
     aiElements.tierBadge.innerText = info.tier;
     
@@ -489,6 +492,9 @@ function renderAiAnalysis(data) {
     
     // Lưu giá trị đề xuất vào data attribute của nút để dùng sau
     aiElements.btnUse.dataset.discount = rec.best_discount;
+    if (analysisData && analysisData.length > 0) {
+        renderAiChart(analysisData, rec.best_discount);
+    }
 }
 
 // 3. Xử lý khi bấm nút "Sử dụng đề xuất"
@@ -535,3 +541,107 @@ aiElements.btnUse.addEventListener("click", () => {
         document.getElementById("promo_code").dispatchEvent(new Event('input')); // Trigger check pattern
     }
 });
+// --- HÀM MỚI: VẼ BIỂU ĐỒ CHART.JS ---
+function renderAiChart(analysisData, bestDiscount) {
+    const ctx = document.getElementById('aiChart').getContext('2d');
+
+    // 1. Hủy biểu đồ cũ nếu tồn tại (để tránh lỗi hiển thị chồng đè khi hover)
+    if (aiChartInstance) {
+        aiChartInstance.destroy();
+    }
+
+    // 2. Chuẩn bị dữ liệu
+    const labels = analysisData.map(item => `Giảm ${item.discount}%`);
+    const revenueData = analysisData.map(item => item.extra_revenue);
+    const fillRateData = analysisData.map(item => item.final_fill_rate);
+
+    // Tạo mảng màu: Cột nào là Best Discount thì màu Xanh, còn lại màu Xám
+    const barColors = analysisData.map(item => 
+        item.discount === bestDiscount ? 'rgba(25, 135, 84, 0.8)' : 'rgba(108, 117, 125, 0.3)'
+    );
+
+    // 3. Khởi tạo Chart
+    aiChartInstance = new Chart(ctx, {
+        type: 'bar', // Dạng biểu đồ cột kết hợp đường
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Doanh thu tăng thêm (VNĐ)',
+                    data: revenueData,
+                    backgroundColor: barColors,
+                    borderColor: barColors.map(c => c.replace('0.3', '1').replace('0.8', '1')),
+                    borderWidth: 1,
+                    order: 2,
+                    yAxisID: 'y', // Trục Y trái
+                },
+                {
+                    type: 'line', // Đường biểu diễn tỷ lệ lấp đầy
+                    label: 'Tỷ lệ lấp đầy (%)',
+                    data: fillRateData,
+                    borderColor: '#ffc107', // Màu vàng
+                    backgroundColor: '#ffc107',
+                    borderWidth: 2,
+                    pointRadius: 4,
+                    tension: 0.3, // Đường cong mềm mại
+                    order: 1,
+                    yAxisID: 'y1' // Trục Y phải
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.dataset.yAxisID === 'y') {
+                                // Format tiền Việt
+                                label += new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(context.raw);
+                            } else {
+                                // Format phần trăm
+                                label += context.raw + '%';
+                            }
+                            return label;
+                        }
+                    }
+                },
+                legend: {
+                    position: 'bottom'
+                }
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Doanh thu' },
+                    ticks: {
+                        callback: function(value) {
+                            // Rút gọn số tiền (VD: 10M, 20M)
+                            return value / 1000000 + ' Tr'; 
+                        }
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    title: { display: true, text: '% Lấp đầy' },
+                    grid: { drawOnChartArea: false }, // Ẩn lưới trục phải cho đỡ rối
+                    min: 0,
+                    max: 100 // Tỷ lệ max luôn là 100%
+                }
+            }
+        }
+    });
+}

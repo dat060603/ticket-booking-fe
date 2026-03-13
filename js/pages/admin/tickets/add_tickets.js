@@ -611,65 +611,108 @@ window.openAiPriceSuggestion = function(matchId) {
 }
 
 // 2. Hàm hiển thị Modal Kết quả
+// 2. Hàm hiển thị Modal Kết quả
 function showAiResultModal(data) {
     const rec = data.recommendation;
     const info = data.match_info;
     const chartData = data.chart_data;
+    
+    // Lấy dữ liệu độ tin cậy
+    const reliability = rec.ai_reliability || { score: 0, level: 'Không rõ', message: 'Chưa có dữ liệu.' };
 
-    // Format tiền tệ
     const fmtMoney = (amount) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+
+    // --- LOGIC MÀU SẮC THEO YÊU CẦU (>75%, 50%) ---
+    let relBadgeClass = 'bg-secondary';
+    let relIcon = 'bi-question-circle';
+    let relTextColor = 'text-muted'; // Biến màu chữ cho dòng text bên dưới
+
+    if (reliability.score >= 75) {
+        // CAO (> 75%) -> MÀU XANH
+        relBadgeClass = 'bg-success';          
+        relIcon = 'bi-check-circle-fill';  
+        relTextColor = 'text-success';    
+    } else if (reliability.score >= 50) {
+        // TRUNG BÌNH (50% - 75%) -> MÀU VÀNG
+        relBadgeClass = 'bg-warning text-dark'; 
+        relIcon = 'bi-exclamation-triangle-fill'; 
+        relTextColor = 'text-warning'; // Hoặc text-dark nếu nền trắng
+    } else {
+        // THẤP (< 50%) -> MÀU ĐỎ
+        relBadgeClass = 'bg-danger';           
+        relIcon = 'bi-x-octagon-fill';   
+        relTextColor = 'text-danger';      
+    }
 
     const htmlContent = `
         <div class="row text-start">
             <div class="col-md-5">
-                <div class="alert alert-light border">
-                    <h6><strong>Thông tin trận đấu:</strong></h6>
+                <div class="alert alert-light border mb-3">
+                    <h6 class="mb-2 text-uppercase text-muted" style="font-size: 0.8rem;">Thông tin trận đấu</h6>
                     <ul class="mb-0 ps-3 small">
                         <li>Trận: <b>${info.name}</b></li>
-                        <li>Độ HOT: ${info.is_hot ? '<span class="badge bg-danger">Rất HOT</span>' : '<span class="badge bg-secondary">Bình thường</span>'}</li>
-                        <li>Độ quan trọng: <b>${info.importance}/5</b></li>
-                        <li>Sức chứa sân: <b>${info.stadium_capacity}</b> ghế</li>
+                       <li>Độ quan trọng: <b>${info.importance}/5</b></li>
+                        <li>Độ HOT: ${info.is_hot ? '<span class="badge bg-danger">HOT 🔥</span>' : '<span class="badge bg-secondary">Thường</span>'}</li>
+                        <li>Sức chứa: <b>${info.stadium_capacity}</b> ghế</li>
                     </ul>
                 </div>
                 
-                <div class="card bg-success text-white mb-3">
-                    <div class="card-body p-3">
-                        <h6 class="card-title"><i class="bi bi-star-fill text-warning"></i> AI ĐỀ XUẤT:</h6>
-                        <h3 class="mb-0 fw-bold text-center">${fmtMoney(rec.optimal_avg_price)}</h3>
-                        <p class="small text-center mb-0 opacity-75">Giá trung bình tối ưu</p>
+                <div class="card border-success mb-3 shadow-sm">
+                    <div class="card-header bg-success text-white text-center py-2">
+                        <h6 class="mb-0"><i class="bi bi-robot"></i> AI ĐỀ XUẤT</h6>
+                    </div>
+                    <div class="card-body text-center p-3">
+                        <h2 class="fw-bold text-success mb-0">${fmtMoney(rec.optimal_avg_price)}</h2>
+                        <p class="small text-muted mb-3">Giá tối ưu dự kiến</p>
+
+                        <div class="border-top pt-3">
+                            <span class="badge rounded-pill ${relBadgeClass} mb-2" style="font-size: 1rem; padding: 10px 15px;">
+                                <i class="bi ${relIcon}"></i> Độ tin cậy: ${reliability.score}%
+                            </span>
+                            
+                            <div class="fw-bold ${reliability.score >= 50 && reliability.score < 75 ? 'text-dark' : relTextColor}" style="font-size: 0.9rem;">
+                                (${reliability.level})
+                            </div>
+
+                            <div class="small fst-italic mt-1 text-muted" style="font-size: 0.8rem;">
+                                "${reliability.message}"
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
-                <ul class="list-group list-group-flush small">
+                <ul class="list-group list-group-flush small border rounded">
                     <li class="list-group-item d-flex justify-content-between">
                         <span>Dự báo bán:</span>
                         <strong>${rec.estimated_sold} vé (${rec.fill_rate}%)</strong>
                     </li>
                     <li class="list-group-item d-flex justify-content-between">
-                        <span>Doanh thu dự kiến:</span>
+                        <span>Doanh thu:</span>
                         <strong class="text-success">${fmtMoney(rec.estimated_revenue)}</strong>
                     </li>
                 </ul>
-                
-                <div class="mt-3 p-2 bg-light rounded small fst-italic border-start border-4 border-warning">
-                    "${getReasonText(rec.reason)}"
-                </div>
             </div>
 
             <div class="col-md-7">
-                <h6 class="text-center mb-2">Biểu đồ Phân tích Giá & Doanh thu</h6>
-                <canvas id="aiPriceChart" height="250"></canvas>
+                <div class="card h-100 border-0">
+                    <div class="card-body">
+                        <h6 class="text-center text-secondary mb-3">Biểu đồ Phân tích</h6>
+                        <canvas id="aiPriceChart" height="300"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     `;
 
     Swal.fire({
-        title: '🤖 Phân tích Chiến lược Giá',
+        title: '🤖 Phân tích & Định giá AI',
         html: htmlContent,
-        width: '900px',
+        width: '950px',
         showCancelButton: true,
-        confirmButtonText: 'Áp dụng mức giá này',
+        confirmButtonText: 'Áp dụng',
         cancelButtonText: 'Đóng',
+        confirmButtonColor: '#198754',
         didOpen: () => {
             renderAiChart(chartData);
         }

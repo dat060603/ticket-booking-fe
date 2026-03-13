@@ -3,7 +3,9 @@ import { fetchWithToken } from '/js/utils/handleToken.js';
 
 const API_BASE_URL = CONFIG.BASE_URL + "/api/";
 
-export async function getStadiumSections(stadiumId, token) {
+// Sửa đổi: Bỏ tham số 'token' ở đây. 
+// fetchWithToken sẽ tự động lấy localStorage.getItem('access_token') bên trong nó.
+export async function getStadiumSections(stadiumId) {
   try {
     const resp = await fetchWithToken(`${API_BASE_URL}events/stadiums/${stadiumId}/sections/`, {
       method: 'GET',
